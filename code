@@ -1,0 +1,161 @@
+// CNN Fear & Greed Index - 100% Equal 36-Degree Segments & Precise Needle
+// Widget Size: SMALL Recommended
+
+// --- 1. 获取数据 ---
+const dataUrl = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata";
+let req = new Request(dataUrl);
+let res;
+try {
+  res = await req.loadJSON();
+} catch (e) {
+  let erWidget = new ListWidget(); erWidget.addText("Fetch Error").textColor = Color.red();
+  Script.setWidget(erWidget); Script.complete();
+}
+
+// 获取核心数据
+const currentScore = Math.round(res.fear_and_greed.score);
+const currentRating = res.fear_and_greed.rating.toUpperCase();
+
+// --- 2. 颜色配置 (深色背景) ---
+const colors = {
+  extFear: new Color("#e74c3c"),   // 红色 (0-20)
+  fear: new Color("#e67e22"),      // 橙色 (20-40)
+  neutral: new Color("#f1c40f"),   // 黄色 (40-60)
+  greed: new Color("#2ecc71"),      // 绿色 (60-80)
+  extGreed: new Color("#27ae60"),   // 深绿 (80-100)
+  darkBG: new Color("#1a1a1a"),     // 深色背景
+  textMain: Color.white(),
+  needle: Color.white()             // 指针颜色
+};
+
+// 根据分数获取状态颜色和文本
+function getScoreInfo(score) {
+  if (score < 20) return { color: colors.extFear, rating: "EXTREME FEAR" };
+  if (score < 40) return { color: colors.fear, rating: "FEAR" };
+  if (score < 60) return { color: colors.neutral, rating: "NEUTRAL" };
+  if (score < 80) return { color: colors.greed, rating: "GREED" };
+  return { color: colors.extGreed, rating: "EXTREME GREED" };
+}
+
+const currentVisual = getScoreInfo(currentScore);
+
+// *** 核心：0-100 线性映射为 -180度 到 0度 ***
+function scoreToDeg(score) {
+  return -180 + (score / 100) * 180;
+}
+
+// 统一画弧函数
+function drawArc(dc, cx, cy, radius, startDeg, endDeg, width, color) {
+  let path = new Path();
+  let steps = 30;
+  for (let i = 0; i <= steps; i++) {
+    let deg = startDeg + (endDeg - startDeg) * (i / steps);
+    let rad = deg * Math.PI / 180;
+    
+    let x = cx + radius * Math.cos(rad);
+    let y = cy + radius * Math.sin(rad); // Y轴向下，负角度向上伸展
+    
+    if (i === 0) {
+      path.move(new Point(x, y));
+    } else {
+      path.addLine(new Point(x, y));
+    }
+  }
+  dc.setLineWidth(width);
+  dc.setStrokeColor(color);
+  dc.addPath(path);
+  dc.strokePath();
+}
+
+// --- 3. 绘制 Canvas (顶部表盘) ---
+const dcWidth = 200;
+const dcHeight = dcWidth * 0.55;
+const dc = new DrawContext(); 
+dc.size = new Size(dcWidth, dcHeight); 
+dc.opaque = false;
+
+const centerX = dcWidth / 2; 
+const centerY = dcHeight * 0.9;
+const gaugeRadius = 80;
+const gaugeLineWidth = 16;
+
+// *** 严格等宽绘制：每段 36 度 (20 个单位) ***
+drawArc(dc, centerX, centerY, gaugeRadius, -180, -144, gaugeLineWidth, colors.extFear);  // 0  - 20 (红)
+drawArc(dc, centerX, centerY, gaugeRadius, -144, -108, gaugeLineWidth, colors.fear);     // 20 - 40 (橙)
+drawArc(dc, centerX, centerY, gaugeRadius, -108, -72,  gaugeLineWidth, colors.neutral);  // 40 - 60 (黄)
+drawArc(dc, centerX, centerY, gaugeRadius, -72,  -36,  gaugeLineWidth, colors.greed);    // 60 - 80 (绿)
+drawArc(dc, centerX, centerY, gaugeRadius, -36,   0,   gaugeLineWidth, colors.extGreed); // 80 - 100 (深绿)
+
+// *** 绘制精确指针 ***
+let needleDeg = scoreToDeg(currentScore); // 64分映射为 -64.8度
+let needleRad = needleDeg * Math.PI / 180;
+let needleLen = gaugeRadius - 10;
+
+dc.setLineWidth(3); 
+dc.setStrokeColor(colors.needle);
+let needlePath = new Path(); 
+needlePath.move(new Point(centerX, centerY));
+needlePath.addLine(new Point(centerX + needleLen * Math.cos(needleRad), centerY + needleLen * Math.sin(needleRad)));
+dc.addPath(needlePath); 
+dc.strokePath();
+
+// 底座圆点
+dc.setFillColor(colors.needle);
+let hubPath = new Path(); 
+hubPath.addEllipse(new Rect(centerX - 5, centerY - 5, 10, 10));
+dc.addPath(hubPath); dc.fillPath();
+
+const gaugeImage = dc.getImage();
+
+// --- 4. 构建 Small Widget (无任何标题，纯表盘在上，数字在下) ---
+let widget = new ListWidget();
+widget.backgroundColor = colors.darkBG;
+widget.setPadding(8, 12, 10, 12);
+
+widget.addSpacer(); 
+
+let centerStack = widget.addStack(); 
+centerStack.layoutVertically();
+centerStack.setPadding(0, 0, 0, 0);
+
+// 1. 【最上方】表盘
+let gaugeRow = centerStack.addStack(); 
+gaugeRow.layoutHorizontally();
+gaugeRow.addSpacer();
+
+let gaugeContainer = gaugeRow.addStack(); 
+gaugeContainer.size = new Size(130, 68); 
+let widgetGaugeImg = gaugeContainer.addImage(gaugeImage);
+widgetGaugeImg.resizable = true; 
+widgetGaugeImg.contentMode = "aspectFit";
+
+gaugeRow.addSpacer();
+
+centerStack.addSpacer(2);
+
+// 2. 【中间】数字 (64)
+let scoreRow = centerStack.addStack(); 
+scoreRow.layoutHorizontally();
+scoreRow.addSpacer();
+
+let scoreText = scoreRow.addText(`${currentScore}`);
+scoreText.textColor = colors.textMain; 
+scoreText.font = Font.boldSystemFont(36);
+
+scoreRow.addSpacer();
+
+// 3. 【最下方】评级 (GREED)
+let ratingRow = centerStack.addStack(); 
+ratingRow.layoutHorizontally();
+ratingRow.addSpacer();
+
+let ratingText = ratingRow.addText(currentRating);
+ratingText.textColor = currentVisual.color; 
+ratingText.font = Font.boldSystemFont(12);
+
+ratingRow.addSpacer();
+
+widget.addSpacer(); 
+
+Script.setWidget(widget); 
+Script.complete();
