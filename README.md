@@ -6,13 +6,13 @@ I created this widget for iOS so you don't have to visit CNN every time you want
 
 ## Installation
 
-Installation is super simple:
+Installation is very simple:
 
-1. Download **Scriptable** on your iPhone — it's free.
+1. Download **Scriptable** on your iPhone, it's free.
 2. Open Scriptable and create a new script.
 3. Copy the contents of my `code` file and paste them into the new script.
 4. Add a **Scriptable Medium Widget** to your Home Screen.
-5. Long-press the widget and tap **Edit Widget**.
+5. Long press the widget and tap **Edit Widget**.
 6. Select the script you just created.
 7. You're all set! 🎉
 
